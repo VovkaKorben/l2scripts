@@ -1,0 +1,78 @@
+uses classes,sysutils,PacketUnit,RegExpr ;
+
+var l2live:TL2Live;
+    l2npc:TL2Npc;
+    dlg,bp:string;
+    RegExp: TRegExpr;
+    j,cnt,dummy:integer;
+    id,oid:cardinal;
+    Pck: TNetworkPacket;
+    sl:TStringList;
+begin
+   // disable and stand
+   Engine.FaceControl(0, false);
+   if (User.Sitting) then Engine.Stand;
+
+   // move to selected WH npc
+   l2live := User.Target;
+   if l2live = NIL then begin print('Select Warehouse NPC and rerun the script!');script.stop();end;
+   Engine.MoveTo(l2live);
+   Engine.DlgOpen;
+   dlg := Engine.DlgText;
+
+
+           // search bypass
+   RegExp:= TRegExpr.Create;
+   try
+       RegExp.Expression:= '[a-z0-9_]*DepositC[a-z0-9_]*';
+       bp :='';
+
+       if RegExp.Exec(dlg) then 
+           bp:=RegExp.Match[0];
+   finally
+    RegExp.Free;
+    end;
+   if (bp='') then begin print('cant find bypass. dialog text: ');   print(dlg);script.stop();end;
+                         print('Found bypass: ' + bp);
+ engine.BypassToServer(bp);
+
+sl:=TStringList.create();
+try
+   // load items ID
+   sl.LoadFromFile(Script.Path+'items_db.txt');
+   sl.sort();
+   print(format('Loaded %d items',[sl.count]));
+ 
+   cnt:=0;
+
+   // iterate inventory
+   for j:= 0 to Inventory.User.Count-1 do
+      if sl.find( IntToStr( Inventory.User.Items(j).id ),dummy) then
+          cnt := cnt + 1;
+   print (format ('Inventory items found: %d',[cnt]));
+
+   if cnt>0 then
+   begin
+      Pck:= TNetworkPacket.Create;    // create packet variable
+      try
+          Pck.WriteC($31);              // SendWareHouseDepositList
+          pck.WriteD(cnt);
+ 
+          for j:= 0 to Inventory.User.Count-1 do
+              if sl.find( IntToStr( Inventory.User.Items(j).id ),dummy) then
+              begin
+                  pck.WriteD(Inventory.User.Items(j).oid);
+                  pck.WriteD(Inventory.User.Items(j).count);
+              end;
+
+          Engine.SendToServer(Pck.ToHex); // send formatted to HEX packet to the server
+      finally
+        Pck.Free;    
+      end;
+   end;
+finally
+    sl.Free;    
+end;
+
+print('done!');
+end.
